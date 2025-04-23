@@ -82,7 +82,7 @@ class bvps:
 
 
 class poisson(bvps):
-    name = "poisson"
+    name = "poisson_1D"
     equation = "u_xx + w^2 sin(w x) = 0"
     X = 1.0
     x_bd = jnp.array([-1, 1])
@@ -109,7 +109,7 @@ class poisson(bvps):
 
 
 class helmholtz(bvps):
-    name = "helmholtz"
+    name = "helmholtz_1D"
     equation = "u_xx + k^2 u = -f(x)"
     X = 1.0
     x_bd = jnp.array([-1, 1])
