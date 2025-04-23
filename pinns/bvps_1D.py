@@ -106,3 +106,53 @@ class poisson(bvps):
         u = self.u(params, x)
         loss_bc = jnp.mean(u**2)
         return loss_bc
+
+
+class helmholtz(bvps):
+    name = "helmholtz"
+    equation = "u_xx + k^2 u = -f(x)"
+    X = 1.0
+    x_bd = jnp.array([-1, 1])
+
+    def __init__(self, k=jnp.pi, source_location=0.0, source_strength=1.0):
+        self.k = k
+
+        self.source_location = source_location
+        self.source_strength = source_strength
+        self.source_variance = 0.001*self.X
+
+    def f(self, x):
+        r_squared = (x-self.source_location)**2
+        coefficient = self.source_strength/jnp.sqrt(2*jnp.pi*self.source_variance)
+        return coefficient*jnp.exp(-r_squared/(2*self.source_variance))
+
+    def pde(self, params, x):
+        u, (_, u_xx) = jet(
+            lambda x: self.u(params, x),
+            (x,),
+            ((jnp.ones(x.shape), jnp.zeros(x.shape)),),
+        )
+
+        u_xx_real = u_xx[..., 0]
+        u_xx_imag = u_xx[..., 1]
+        u_real = u[..., 0]
+        u_imag = u[..., 1]
+
+        pde_residual_real = u_xx_real + self.k**2*u_real + self.f(x)
+        pde_residual_imag = u_xx_imag + self.k**2*u_imag
+        return pde_residual_real**2 + pde_residual_imag**2
+        # return jnp.real(pde_residual*jnp.conjugate(pde_residual))
+
+    def loss_bc(self, params):
+        # Absorbing boundary conditions
+        # u_x = iku(x)
+        # k swaps sine on each side
+
+        x = self.X * self.x_bd
+        u, u_x = jax.jvp(lambda x: self.u(params, x), (x,), (jnp.ones(x.shape),))
+
+        right_side = (u_x[1, 0]+self.k*u[1, 1])**2 + (u_x[1, 1]-self.k*u[1, 0])**2
+        left_side = (u_x[0, 0]-self.k*u[0, 1])**2 + (u_x[0, 1]+self.k*u[0, 0])**2
+
+        loss_bc = (right_side+left_side)/2
+        return loss_bc
