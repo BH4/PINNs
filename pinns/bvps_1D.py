@@ -146,7 +146,7 @@ class helmholtz(bvps):
     def loss_bc(self, params):
         # Absorbing boundary conditions
         # u_x = iku(x)
-        # k swaps sine on each side
+        # k swaps sign on each side
 
         x = self.X * self.x_bd
         u, u_x = jax.jvp(lambda x: self.u(params, x), (x,), (jnp.ones(x.shape),))

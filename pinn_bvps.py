@@ -5,14 +5,14 @@ import jax.random as jr
 import jaxopt
 from optax import adam, cosine_decay_schedule
 
-from pinns.bvps import poisson
+from pinns.bvps import helmholtz
 from pinns.nn import Siren
 
 
-class PINN(poisson):
+class PINN(helmholtz):
     def __init__(self, width=64, depth=5, w0=8.0):
         super().__init__()
-        layers = [2] + [width for _ in range(depth - 1)] + [1]
+        layers = [2] + [width for _ in range(depth - 1)] + [2]
         self.init, self.apply = Siren(layers, w0)
         # (Nt, Nx)
         self.u = jax.vmap(jax.vmap(self._u, (None, 0, None), 0), (None, None, 0), 1)
