@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jaxopt
 from optax import adam, cosine_decay_schedule
+import pickle
 
 from pinns.bvps import helmholtz
 from pinns.nn import Siren
@@ -29,7 +30,7 @@ init_key, train_key = jr.split(jr.key(0))
 init_params = pinn.init(init_key)
 
 nIter = 1 * 10**5
-lr = cosine_decay_schedule(1e-03, nIter)
+lr = cosine_decay_schedule(6e-04, nIter)
 optimizer = jaxopt.OptaxSolver(fun=pinn.loss, opt=adam(lr))
 
 Nx, Ny = 128, 128
@@ -40,4 +41,6 @@ domain_tr = [
 
 
 pinn.train(optimizer, domain_tr, train_key, init_params, nIter=nIter)
+with open('final_params.model', 'wb') as file:
+    pickle.dump((pinn.opt_params, pinn.loss_log), file)
 pinn.drawing(save=True)

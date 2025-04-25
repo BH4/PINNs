@@ -25,7 +25,7 @@ class bvps:
     @partial(jax.jit, static_argnums=(0,))
     def loss(self, params, x, y):
         loss = (
-            self.pde(params, x, y).mean()
+            self.loss_bulk(params, x, y)
             + self.loss_bc(params)
         )
         #    + self.loss_source(params)
@@ -57,11 +57,17 @@ class bvps:
                 domain[1] = Y * jr.uniform(subkey[1], (Ny,), minval=y_T, maxval=y_B)
                 pbar.set_postfix({"pinn loss": f"{loss:.3e}"})
 
+            if it % 10000 == 0:
+                self.opt_params, self.loss_log = params, loss_log
+                self.drawing(save=True, step=it)
+
         self.opt_params, self.loss_log = params, loss_log
 
-    def drawing(self, save=True):
+    def drawing(self, save=True, step=None):
         print("Drawing...")
-        dir = f"figures/{self.name}"
+        filename = f"figures/{self.name}"
+        if step is not None:
+            filename = f"figures/temp/{self.name}_{step}"
         fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(18, 5))
         # loss log
         ax1.semilogy(jnp.arange(len(self.loss_log))*100, self.loss_log, label="PINN Loss")
@@ -84,18 +90,20 @@ class bvps:
         fig.colorbar(im3)
         ax3.set_title('Imag(E_z)')
         if save:
-            fig.savefig(dir)
+            fig.savefig(filename)
+            plt.close(fig=fig)
         else:
             fig.show()
 
-        dir = f"figures/{self.name}_loss"
+        filename += "_loss"
         fig, ax1 = plt.subplots(ncols=1, figsize=(6, 5))
         pred = self.pde(opt_params, *domain)
         color_norm = LogNorm(vmin=jnp.min(pred), vmax=jnp.max(pred))
         im = ax1.imshow(pred.T, origin="upper", cmap="jet", aspect="auto", norm=color_norm)
         fig.colorbar(im)
         if save:
-            fig.savefig(dir)
+            fig.savefig(filename)
+            plt.close(fig=fig)
         else:
             fig.show()
         print("Done!")
@@ -177,7 +185,7 @@ class helmholtz(bvps):
     x_bd = jnp.array([0, 1])
     y_bd = jnp.array([0, 1])
 
-    def __init__(self, k=4.0, source_location=(138.0/600.0, 202.0/600.0), source_strength=1.0):
+    def __init__(self, k=40.0, source_location=(138.0/600.0, 202.0/600.0), source_strength=1.0):
         self.k = k
 
         # temp
@@ -192,7 +200,7 @@ class helmholtz(bvps):
 
     def f_gaussian(self, x, y):
         r_squared = (x-self.source_location[0])**2+(y-self.source_location[1])**2
-        coefficient = 1/jnp.sqrt(2*jnp.pi*self.source_variance)
+        coefficient = self.source_strength/jnp.sqrt(2*jnp.pi*self.source_variance)
         return coefficient*jnp.exp(-r_squared/(2*self.source_variance))
 
     def pde(self, params, x, y):
@@ -217,6 +225,9 @@ class helmholtz(bvps):
         pde_residual_real = u_xx_real + u_yy_real + self.k**2*u_real + self.f(x, y)
         pde_residual_imag = u_xx_imag + u_yy_imag + self.k**2*u_imag
         return pde_residual_real**2 + pde_residual_imag**2
+
+    def loss_bulk(self, params, x, y):
+        return self.pde(params, x, y).mean()
 
     def loss_bc(self, params):
         # Absorbing boundary conditions
