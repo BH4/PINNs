@@ -16,7 +16,10 @@ class PINN(helmholtz):
         layers = [2] + [width for _ in range(depth - 1)] + [2]
         self.init, self.apply = Siren(layers, w0)
         # (Nt, Nx)
-        self.u = jax.vmap(jax.vmap(self._u, (None, 0, None), 0), (None, None, 0), 1)
+        self.u_double_vmap = jax.vmap(jax.vmap(self._u, (None, 0, None), 0), (None, None, 0), 1)
+        self.u_single_vmap = jax.vmap(self._u, (None, 0, 0))
+
+        self.u = self.u_double_vmap
 
     def _u(self, params, x, y):  # scalar function
         inputs = jnp.hstack([x, y])
@@ -24,8 +27,8 @@ class PINN(helmholtz):
         return output
 
 
-load = True
-pinn = PINN()
+load = False
+pinn = PINN(w0=2.0)
 init_key, train_key = jr.split(jr.key(0))
 init_params = pinn.init(init_key)
 loss_log = []
@@ -34,10 +37,10 @@ if load:
         init_params, loss_log = pickle.load(file)
 
 nIter = 1 * 10**5
-lr = cosine_decay_schedule(6e-04, nIter)
+lr = cosine_decay_schedule(1e-3, nIter)
 optimizer = jaxopt.OptaxSolver(fun=pinn.loss, opt=adam(lr))
 
-Nx, Ny = 256, 256
+Nx, Ny = 128, 128
 domain_tr = [
     pinn.X * jnp.linspace(*pinn.x_bd, Nx),
     pinn.Y * jnp.linspace(*pinn.y_bd, Ny)

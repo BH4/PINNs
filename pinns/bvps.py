@@ -27,6 +27,7 @@ class bvps:
         loss = (
             self.loss_bulk(params, x, y)
             + self.loss_bc(params)
+            + self.loss_interface(params)
         )
         #    + self.loss_source(params)
         #)
@@ -258,6 +259,28 @@ class helmholtz(bvps):
 
         loss_bc = (jnp.mean(right_side)+jnp.mean(left_side)+jnp.mean(bottom_side)+jnp.mean(top_side))/4
         return loss_bc
+
+    def loss_interface(self, params):
+        # Sample around source
+        # currently just using a square
+        n = 100
+        dr = 0.001
+
+        theta_sample = jnp.linspace(0, 2*jnp.pi, n)
+
+        x_sample_out = (self.dielectric_radius+dr)*jnp.cos(theta_sample) + self.source_location[0]
+        y_sample_out = (self.dielectric_radius+dr)*jnp.sin(theta_sample) + self.source_location[1]
+        x_sample_in = (self.dielectric_radius-dr)*jnp.cos(theta_sample) + self.source_location[0]
+        y_sample_in = (self.dielectric_radius-dr)*jnp.sin(theta_sample) + self.source_location[1]
+
+        u_out = self.u_single_vmap(params, x_sample_out, y_sample_out)
+        u_in = self.u_single_vmap(params, x_sample_in, y_sample_in)
+        diff = u_out-u_in
+        diff_real = diff[..., 0]
+        diff_imag = diff[..., 1]
+
+        loss_interface = diff_real**2 + diff_imag**2
+        return jnp.mean(loss_interface)
 
     def loss_source(self, params):
         # Sample around source
