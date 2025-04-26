@@ -75,19 +75,19 @@ class bvps:
         # Solution profile
         opt_params = self.opt_params
         domain = (
-            self.X * jnp.linspace(*self.x_bd, 200),
-            self.Y * jnp.linspace(*self.y_bd, 200),
+            self.X * jnp.linspace(*self.x_bd, 600),
+            self.Y * jnp.linspace(*self.y_bd, 600),
         )
         pred = self.u(opt_params, *domain)
         m = jnp.max(jnp.abs(pred[..., 0]))
-        im2 = ax2.imshow(pred[..., 0].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m))
+        im2 = ax2.imshow(pred[..., 0].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m), interpolation="none")
         fig.colorbar(im2)
-        ax2.set_title('Real(u(x, y))')
+        ax2.set_title('Real(E_z)')
 
         m = jnp.max(jnp.abs(pred[..., 1]))
-        im3 = ax3.imshow(pred[..., 1].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m))
+        im3 = ax3.imshow(pred[..., 1].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m), interpolation="none")
         fig.colorbar(im3)
-        ax3.set_title('Imag(u(x, y))')
+        ax3.set_title('Imag(E_z)')
         if save:
             fig.savefig(filename)
             plt.close(fig=fig)
@@ -98,7 +98,7 @@ class bvps:
         fig, ax1 = plt.subplots(ncols=1, figsize=(6, 5))
         pred = self.pde(opt_params, *domain)
         color_norm = LogNorm(vmin=jnp.min(pred), vmax=jnp.max(pred))
-        im = ax1.imshow(pred.T, origin="upper", cmap="jet", aspect="auto", norm=color_norm)
+        im = ax1.imshow(pred.T, origin="upper", cmap="jet", aspect="auto", norm=color_norm, interpolation=None)
         fig.colorbar(im)
         if save:
             fig.savefig(filename)
@@ -178,13 +178,13 @@ class poisson(bvps):
 
 class helmholtz(bvps):
     name = "helmholtz"
-    equation = "u_xx + u_yy + e(x, y)*k^2 u = -f(x)"
-    X = 1.0
-    Y = 1.0
+    equation = "u_xx + u_yy + e(x, y)*k^2 u = -i*k*f(x, y)"
+    X = 10.0
+    Y = 10.0
     x_bd = jnp.array([0, 1])
     y_bd = jnp.array([0, 1])
 
-    def __init__(self, k=40.0, source_location=(138.0/600.0, 202.0/600.0), source_strength=1.0):
+    def __init__(self, k=4.0, source_location=(138.0/600.0, 202.0/600.0), source_strength=1.0):
         self.k = k
 
         # temp
@@ -192,8 +192,11 @@ class helmholtz(bvps):
 
         self.source_location = source_location
         self.source_strength = source_strength
-        self.source_variance = 0.0001
+        self.source_variance = 0.0001*(self.X**2)
         _f = self.f_gaussian
+
+        self.dielectric_epsilon = 2
+        self.dielectric_radius = 0.2*self.X
 
         self.f = jax.vmap(jax.vmap(_f, (0, None), 0), (None, 0), 1)
         self.epsilon = jax.vmap(jax.vmap(self._epsilon, (0, None), 0), (None, 0), 1)
@@ -204,9 +207,8 @@ class helmholtz(bvps):
         return coefficient*jnp.exp(-r_squared/(2*self.source_variance))
 
     def _epsilon(self, x, y):
-        # return 1.0
-        return ((x-self.X/2)**2+(y-self.Y/2)**2 < 0.05*self.X).astype(int) + 1
-
+        dist_squared = (x-self.X/2)**2+(y-self.Y/2)**2
+        return (dist_squared < (self.dielectric_radius)**2).astype(int) + (self.dielectric_epsilon-1)
 
     def pde(self, params, x, y):
         _, (_, u_xx) = jet(
@@ -227,8 +229,8 @@ class helmholtz(bvps):
         u_real = u[..., 0]
         u_imag = u[..., 1]
 
-        pde_residual_real = u_xx_real + u_yy_real + self.epsilon(x, y)*self.k**2*u_real + self.f(x, y)
-        pde_residual_imag = u_xx_imag + u_yy_imag + self.epsilon(x, y)*self.k**2*u_imag
+        pde_residual_real = (u_xx_real + u_yy_real + self.epsilon(x, y)*self.k**2*u_real)
+        pde_residual_imag = (u_xx_imag + u_yy_imag + self.epsilon(x, y)*self.k**2*u_imag) + self.k*self.f(x, y)
         return pde_residual_real**2 + pde_residual_imag**2
 
     def loss_bulk(self, params, x, y):
