@@ -12,7 +12,7 @@ from tqdm import trange
 class bvps:
     name = "bvps"
 
-    # solution, initial condition and pde must be overrided
+    # solution, initial condition and pde must be overridden
     def u(self):
         raise NotImplementedError
 
@@ -32,14 +32,13 @@ class bvps:
         #)
         return loss
 
-    def train(self, optimizer, domain, key, params, nIter=5 * 10**4):
+    def train(self, optimizer, domain, key, params, loss_log=[], nIter=5 * 10**4):
         print(self.equation)
         X, Y = self.X, self.Y
         x_L, x_R = self.x_bd
         y_T, y_B = self.y_bd
         Nx, Ny = domain[0].size, domain[1].size
         state = optimizer.init_state(params, *domain)
-        loss_log = []
 
         @jax.jit
         def step(params, state, *args, **kwargs):
@@ -83,19 +82,19 @@ class bvps:
         m = jnp.max(jnp.abs(pred[..., 0]))
         im2 = ax2.imshow(pred[..., 0].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m))
         fig.colorbar(im2)
-        ax2.set_title('Real(E_z)')
+        ax2.set_title('Real(u(x, y))')
 
         m = jnp.max(jnp.abs(pred[..., 1]))
         im3 = ax3.imshow(pred[..., 1].T, origin="upper", cmap="bwr", aspect="auto", norm=TwoSlopeNorm(0, vmin=-m, vmax=m))
         fig.colorbar(im3)
-        ax3.set_title('Imag(E_z)')
+        ax3.set_title('Imag(u(x, y))')
         if save:
             fig.savefig(filename)
             plt.close(fig=fig)
         else:
             fig.show()
 
-        filename += "_loss"
+        filename += "_residual"
         fig, ax1 = plt.subplots(ncols=1, figsize=(6, 5))
         pred = self.pde(opt_params, *domain)
         color_norm = LogNorm(vmin=jnp.min(pred), vmax=jnp.max(pred))
@@ -179,7 +178,7 @@ class poisson(bvps):
 
 class helmholtz(bvps):
     name = "helmholtz"
-    equation = "u_xx + u_yy + k^2 u = -f(x)"
+    equation = "u_xx + u_yy + e(x, y)*k^2 u = -f(x)"
     X = 1.0
     Y = 1.0
     x_bd = jnp.array([0, 1])
@@ -193,15 +192,21 @@ class helmholtz(bvps):
 
         self.source_location = source_location
         self.source_strength = source_strength
-        self.source_variance = 0.0001*self.X  # ideally have 2
+        self.source_variance = 0.0001
         _f = self.f_gaussian
 
         self.f = jax.vmap(jax.vmap(_f, (0, None), 0), (None, 0), 1)
+        self.epsilon = jax.vmap(jax.vmap(self._epsilon, (0, None), 0), (None, 0), 1)
 
     def f_gaussian(self, x, y):
         r_squared = (x-self.source_location[0])**2+(y-self.source_location[1])**2
-        coefficient = self.source_strength/jnp.sqrt(2*jnp.pi*self.source_variance)
+        coefficient = self.source_strength/(2*jnp.pi*self.source_variance)
         return coefficient*jnp.exp(-r_squared/(2*self.source_variance))
+
+    def _epsilon(self, x, y):
+        # return 1.0
+        return ((x-self.X/2)**2+(y-self.Y/2)**2 < 0.05*self.X).astype(int) + 1
+
 
     def pde(self, params, x, y):
         _, (_, u_xx) = jet(
@@ -222,8 +227,8 @@ class helmholtz(bvps):
         u_real = u[..., 0]
         u_imag = u[..., 1]
 
-        pde_residual_real = u_xx_real + u_yy_real + self.k**2*u_real + self.f(x, y)
-        pde_residual_imag = u_xx_imag + u_yy_imag + self.k**2*u_imag
+        pde_residual_real = u_xx_real + u_yy_real + self.epsilon(x, y)*self.k**2*u_real + self.f(x, y)
+        pde_residual_imag = u_xx_imag + u_yy_imag + self.epsilon(x, y)*self.k**2*u_imag
         return pde_residual_real**2 + pde_residual_imag**2
 
     def loss_bulk(self, params, x, y):

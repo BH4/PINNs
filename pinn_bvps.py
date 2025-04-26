@@ -22,25 +22,29 @@ class PINN(helmholtz):
         inputs = jnp.hstack([x, y])
         output = self.apply(params, inputs).squeeze()
         return output
-        #return jnp.sin(self.omega*x)
 
 
+load = True
 pinn = PINN()
 init_key, train_key = jr.split(jr.key(0))
 init_params = pinn.init(init_key)
+loss_log = []
+if load:
+    with open('final_params.model', 'rb') as file:  # continue from scaterer 1 atm
+        init_params, loss_log = pickle.load(file)
 
 nIter = 1 * 10**5
 lr = cosine_decay_schedule(6e-04, nIter)
 optimizer = jaxopt.OptaxSolver(fun=pinn.loss, opt=adam(lr))
 
-Nx, Ny = 128, 128
+Nx, Ny = 256, 256
 domain_tr = [
     pinn.X * jnp.linspace(*pinn.x_bd, Nx),
     pinn.Y * jnp.linspace(*pinn.y_bd, Ny)
 ]
 
 
-pinn.train(optimizer, domain_tr, train_key, init_params, nIter=nIter)
+pinn.train(optimizer, domain_tr, train_key, init_params, loss_log=loss_log, nIter=nIter)
 with open('final_params.model', 'wb') as file:
     pickle.dump((pinn.opt_params, pinn.loss_log), file)
 pinn.drawing(save=True)
